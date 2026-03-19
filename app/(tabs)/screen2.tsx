@@ -24,7 +24,7 @@ type SensorData = {
     field3: string;
 };
 
-export default function HomeScreen() {
+export default function HomeScreen3() {
     const [data, setData] = useState<SensorData | null>(null);
     const [loading, setLoading] = useState(true);
     // Modified to handle date and time string
@@ -32,7 +32,7 @@ export default function HomeScreen() {
     
     const fetchData = async () => {
         try {
-            const reply = await fetch('https://api.thingspeak.com/channels/3295855/feeds.json?api_key=R2EQOUA9V90FHRPD&results=1');
+            const reply = await fetch('https://api.thingspeak.com/channels/3299248/fields/1.json?api_key=KH7IWAJ1T6UF2XYK&results=2');
             const result = await reply.json();
             
             console.log("API Feed:", result.feeds[0]);
@@ -109,7 +109,7 @@ export default function HomeScreen() {
 
             <View style={styles.footer}>
                 {/* Updated display to show Date | Time */}
-                <Text style={styles.updateText}>Last Sync: {lastUpdate}</Text>
+                <Text style={styles.updateText}>Last Sync: {lastUpdate} </Text>
                 
                 <View style={styles.dataGrid}>
                     <View style={styles.box}>
