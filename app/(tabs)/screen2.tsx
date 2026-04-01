@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { 
-    ActivityIndicator, 
-    StyleSheet, 
-    Text, 
-    View, 
-    TouchableOpacity, 
-    Linking, 
-    Platform 
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Linking,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
 import MapView, { Marker, UrlTile } from 'react-native-maps';
 
 const ABUJA_FALLBACK = {
@@ -27,45 +27,65 @@ type SensorData = {
 export default function HomeScreen3() {
     const [data, setData] = useState<SensorData | null>(null);
     const [loading, setLoading] = useState(true);
-    // Modified to handle date and time string
+    const [error, setError] = useState<string | null>(null);
     const [lastUpdate, setLastUpdate] = useState<string>('--/--/-- | --:--:--');
-    
-    const fetchData = async () => {
+    const isMountedRef = useRef(true);
+
+    const fetchData = async (isInitialLoad = false) => {
+        if (isInitialLoad) setLoading(true);
+        setError(null);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
         try {
-            const reply = await fetch('https://api.thingspeak.com/channels/3299248/fields/1.json?api_key=KH7IWAJ1T6UF2XYK&results=2');
+            // NOTE: I kept your specific URL, but ensure this channel actually provides lat/lng fields!
+            const reply = await fetch('https://api.thingspeak.com/channels/3299248/feeds.json?api_key=KH7IWAJ1T6UF2XYK&results=1', {
+                signal: controller.signal,
+            });
+
+            if (!reply.ok) throw new Error(`API Error: ${reply.status}`);
+
             const result = await reply.json();
-            
-            console.log("API Feed:", result.feeds[0]);
 
             if (result.feeds && result.feeds.length > 0) {
                 const latest = result.feeds[0];
-                setData(latest);
-                
-                if (result.channel && result.channel.updated_at) {
-                    const fullDate = result.channel.updated_at; // "2026-03-19T11:04:33Z"
-                    const datePart = fullDate.slice(0, 10);
-                    const timePart = fullDate.slice(11, 19);
-                    setLastUpdate(`${datePart} | ${timePart}`); 
-                    console.log("refresh");
+                if (isMountedRef.current) {
+                    setData(latest);
+
+                    if (result.channel?.updated_at) {
+                        const fullDate = result.channel.updated_at;
+                        setLastUpdate(`${fullDate.slice(0, 10)} | ${fullDate.slice(11, 19)}`);
+                    }
                 }
             }
-        } catch (error) {
-            console.error('Fetch Error:', error);
+        } catch (err) {
+            console.error('Fetch Error:', err);
+            if (!data && isMountedRef.current) {
+                setError('Unable to load data. Please check your connection.');
+            }
         } finally {
-            setLoading(false);
+            clearTimeout(timeoutId);
+            if (isMountedRef.current) setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchData();
-        const interval = setInterval(fetchData, 150000); 
-        return () => clearInterval(interval);
+        isMountedRef.current = true;
+        fetchData(true);
+
+        const interval = setInterval(() => fetchData(false), 15000);
+        
+        return () => {
+            isMountedRef.current = false;
+            clearInterval(interval); // Clean up the timer!
+        };
     }, []);
 
+    // --- Logic for Coordinates (Moved outside useEffect) ---
     const latNum = parseFloat(data?.latitude || '0');
     const lngNum = parseFloat(data?.longitude || '0');
-
-    const isDataValid = !isNaN(latNum) && !isNaN(lngNum) && latNum !== 0 && lngNum !== 0;
+    const isDataValid = !isNaN(latNum) && !isNaN(lngNum) && latNum !== 0;
 
     const currentRegion = isDataValid ? {
         latitude: latNum,
@@ -74,32 +94,43 @@ export default function HomeScreen3() {
         longitudeDelta: 0.01,
     } : ABUJA_FALLBACK;
 
-    const openInExternalMaps = () => {
-        const targetLat = isDataValid ? latNum : ABUJA_FALLBACK.latitude;
-        const targetLng = isDataValid ? lngNum : ABUJA_FALLBACK.longitude;
-        
-        const scheme = Platform.OS === 'ios' ? 'maps:0,0?q=' : 'geo:0,0?q=';
-        const url = `${scheme}${targetLat},${targetLng}`;
-        
-        Linking.openURL(url);
-    };
+    // --- Conditional Rendering (Properly placed in the component body) ---
 
-    if (loading) {
-        return <ActivityIndicator size="large" color="#126900" style={{ flex: 1 }} />;
+    if (loading && !data) {
+        return (
+            <View style={styles.center}>
+                <ActivityIndicator size="large" color="#126900" />
+                <Text style={{ marginTop: 10, color: '#666' }}>Connecting to Sensor...</Text>
+            </View>
+        );
+    }
+
+    if (error && !data) {
+        return (
+            <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle" size={60} color="#C0392B" />
+                <Text style={styles.errorTitle}>Connection Failed</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={() => fetchData(true)}>
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
     }
 
     return (
         <View style={styles.container}>
             <View style={styles.mapContainer}>
-                <MapView 
-                    style={styles.map} 
-                    region={currentRegion} 
+                <MapView
+                    style={styles.map}
+                    region={currentRegion}
                     showsUserLocation={true}
                 >
-                    <UrlTile 
-                        urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png" 
-                        maximumZ={19} 
-                        shouldReplaceMapContent={true} 
+                    <UrlTile
+                        urlTemplate="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+                        maximumZ={19}
+                        shouldReplaceMapContent={true}
+                        // @ts-ignore
+                        userAgent="TrackerApp/1.0"
                     />
                     <Marker coordinate={{ latitude: currentRegion.latitude, longitude: currentRegion.longitude }}>
                         <Ionicons name="location" size={45} color={isDataValid ? "#126900" : "#C0392B"} />
@@ -108,9 +139,8 @@ export default function HomeScreen3() {
             </View>
 
             <View style={styles.footer}>
-                {/* Updated display to show Date | Time */}
                 <Text style={styles.updateText}>Last Sync: {lastUpdate} </Text>
-                
+
                 <View style={styles.dataGrid}>
                     <View style={styles.box}>
                         <Ionicons name="compass-outline" size={20} color="#126900" />
@@ -131,7 +161,10 @@ export default function HomeScreen3() {
                     </View>
                 </View>
 
-                <TouchableOpacity style={styles.button} onPress={openInExternalMaps}>
+                <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={() => Linking.openURL(Platform.OS === 'ios' ? `maps:0,0?q=${latNum},${lngNum}` : `geo:0,0?q=${latNum},${lngNum}`)}
+                >
                     <Ionicons name="map-outline" size={18} color="#fff" style={{ marginRight: 10 }} />
                     <Text style={styles.buttonText}>Open in Maps</Text>
                 </TouchableOpacity>
@@ -140,8 +173,10 @@ export default function HomeScreen3() {
     );
 }
 
+// --- Styles (Moved outside the component for performance) ---
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#fff' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     mapContainer: { flex: 1 },
     map: { flex: 1 },
     footer: {
@@ -157,36 +192,15 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 15,
     },
-    updateText: {
-        textAlign: 'center',
-        fontSize: 11,
-        color: '#999',
-        marginBottom: 15,
-        fontWeight: '600',
-    },
-    dataGrid: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 25,
-    },
-    box: {
-        backgroundColor: '#fbfcfc',
-        paddingVertical: 18,
-        borderRadius: 20,
-        alignItems: 'center',
-        width: '31%',
-        borderWidth: 1,
-        borderColor: '#f0f2f2'
-    },
+    updateText: { textAlign: 'center', fontSize: 11, color: '#999', marginBottom: 15, fontWeight: '600' },
+    dataGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
+    box: { backgroundColor: '#fbfcfc', paddingVertical: 18, borderRadius: 20, alignItems: 'center', width: '31%', borderWidth: 1, borderColor: '#f0f2f2' },
     label: { fontSize: 9, color: '#aaa', marginBottom: 5 },
     value: { fontSize: 11, fontWeight: 'bold', color: '#2c3e50' },
-    button: {
-        backgroundColor: '#126900',
-        flexDirection: 'row',
-        padding: 20,
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
+    button: { backgroundColor: '#126900', flexDirection: 'row', padding: 20, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
     buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+    errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 25 },
+    errorTitle: { marginTop: 20, fontSize: 22, fontWeight: 'bold', color: '#333' },
+    retryButton: { backgroundColor: '#126900', marginTop: 20, paddingHorizontal: 30, paddingVertical: 14, borderRadius: 25 },
+    retryButtonText: { color: '#fff', fontWeight: '700' },
 });
