@@ -22,13 +22,16 @@ type SensorData = {
     latitude: string;
     longitude: string;
     field3: string;
+    field1:string;
+    field2: string;
+    field4: string;
 };
 
 export default function HomeScreen3() {
     const [data, setData] = useState<SensorData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [lastUpdate, setLastUpdate] = useState<string>('--/--/-- | --:--:--');
+ //   const [lastUpdate, setLastUpdate] = useState<string>('--/--/-- | --:--:--');
     const isMountedRef = useRef(true);
 
     const fetchData = async (isInitialLoad = false) => {
@@ -36,11 +39,12 @@ export default function HomeScreen3() {
         setError(null);
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        console.log('refresh2')
 
         try {
-            // NOTE: I kept your specific URL, but ensure this channel actually provides lat/lng fields!
-            const reply = await fetch('https://api.thingspeak.com/channels/3299248/feeds.json?api_key=KH7IWAJ1T6UF2XYK&results=1', {
+           
+            const reply = await fetch('https://api.thingspeak.com/channels/3299248/feeds.json?results=2', {
                 signal: controller.signal,
             });
 
@@ -49,14 +53,14 @@ export default function HomeScreen3() {
             const result = await reply.json();
 
             if (result.feeds && result.feeds.length > 0) {
-                const latest = result.feeds[0];
+                const latest = result.feeds.at(-1);
                 if (isMountedRef.current) {
                     setData(latest);
 
-                    if (result.channel?.updated_at) {
+                /*    if (result.channel?.updated_at) {
                         const fullDate = result.channel.updated_at;
                         setLastUpdate(`${fullDate.slice(0, 10)} | ${fullDate.slice(11, 19)}`);
-                    }
+                    } */
                 }
             }
         } catch (err) {
@@ -83,8 +87,8 @@ export default function HomeScreen3() {
     }, []);
 
     // --- Logic for Coordinates (Moved outside useEffect) ---
-    const latNum = parseFloat(data?.latitude || '0');
-    const lngNum = parseFloat(data?.longitude || '0');
+    const latNum = parseFloat(data?.field1 || '0');
+    const lngNum = parseFloat(data?.field2 || '0');
     const isDataValid = !isNaN(latNum) && !isNaN(lngNum) && latNum !== 0;
 
     const currentRegion = isDataValid ? {
@@ -139,19 +143,20 @@ export default function HomeScreen3() {
             </View>
 
             <View style={styles.footer}>
-                <Text style={styles.updateText}>Last Sync: {lastUpdate} </Text>
+                <Text style={styles.updateText}>{/**Last Sync: {lastUpdate}  */}
+                    Time updated: {(data?.field4 || '0')}</Text>
 
                 <View style={styles.dataGrid}>
-                    <View style={styles.box}>
+                    <View style={styles.box}> 
                         <Ionicons name="compass-outline" size={20} color="#126900" />
                         <Text style={styles.label}>Latitude</Text>
-                        <Text style={styles.value}>{data?.latitude || '--'}</Text>
+                        <Text style={styles.value}>{data?.field1 || '--'}</Text>
                     </View>
 
                     <View style={styles.box}>
                         <Ionicons name="navigate-outline" size={20} color="#126900" />
                         <Text style={styles.label}>Longitude</Text>
-                        <Text style={styles.value}>{data?.longitude || '--'}</Text>
+                        <Text style={styles.value}>{data?.field2 || '--'}</Text>
                     </View>
 
                     <View style={styles.box}>

@@ -20,7 +20,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "y",
+      "package": "com.botchedino.tracker",
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyCoV0-IWboz04F47tLFLZY7j6YM1VvBPPE"
